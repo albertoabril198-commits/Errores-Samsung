@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ErrorDiagnosis, DeviceType } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
 export const diagnoseError = async (code: string, deviceType: DeviceType): Promise<ErrorDiagnosis> => {
   const model = 'gemini-3-flash-preview';
