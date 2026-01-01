@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import DiagnosisResult from './components/DiagnosisResult';
@@ -7,7 +6,6 @@ import { ErrorDiagnosis, DeviceType, SearchHistory } from './types';
 
 const App: React.FC = () => {
   const [errorCode, setErrorCode] = useState('');
-  // --- NUEVO ESTADO PARA INFORMACIÓN EXTRA ---
   const [extraInfo, setExtraInfo] = useState(''); 
   const [deviceType, setDeviceType] = useState<DeviceType>(DeviceType.RAC);
   const [loading, setLoading] = useState(false);
@@ -15,6 +13,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<SearchHistory[]>([]);
 
+  // Cargar historial al iniciar
   useEffect(() => {
     const savedHistory = localStorage.getItem('hvac_search_history');
     if (savedHistory) {
@@ -22,6 +21,7 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Guardar en historial
   const saveToHistory = (code: string, type: DeviceType) => {
     const newItem: SearchHistory = { code, deviceType: type, timestamp: Date.now() };
     const updatedHistory = [newItem, ...history.filter(h => h.code !== code)].slice(0, 10);
@@ -29,6 +29,7 @@ const App: React.FC = () => {
     localStorage.setItem('hvac_search_history', JSON.stringify(updatedHistory));
   };
 
+  // Función principal de diagnóstico
   const handleDiagnose = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!errorCode.trim()) return;
@@ -38,8 +39,6 @@ const App: React.FC = () => {
     setDiagnosis(null);
 
     try {
-      // --- AHORA PASAMOS TAMBIÉN LA INFO EXTRA AL SERVICIO ---
-      // Nota: Asegúrate de que tu geminiService acepte este tercer parámetro opcional
       const result = await diagnoseError(errorCode, deviceType, extraInfo);
       setDiagnosis(result);
       saveToHistory(errorCode, deviceType);
@@ -50,11 +49,14 @@ const App: React.FC = () => {
     }
   };
 
+  // LIMPIEZA TOTAL: Borra campos, diagnóstico e historial
   const clearSearch = () => {
     setErrorCode('');
-    setExtraInfo(''); // Limpia también la info extra
+    setExtraInfo(''); 
     setDiagnosis(null);
     setError(null);
+    setHistory([]); // Limpia la lista visual
+    localStorage.removeItem('hvac_search_history'); // Borra la memoria física
   };
 
   return (
@@ -63,7 +65,9 @@ const App: React.FC = () => {
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
               Nueva Búsqueda
             </h2>
             
@@ -81,7 +85,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* --- NUEVO CUADRO DE MÁS INFORMACIÓN --- */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Más información / Síntomas</label>
                 <textarea 
@@ -121,17 +124,16 @@ const App: React.FC = () => {
                     w-full py-4 rounded-xl font-bold text-white transition-all transform active:scale-95
                     ${loading || !errorCode 
                       ? 'bg-gray-300 cursor-not-allowed' 
-                      : 'bg-[#034EA2] hover:bg-blue-800 shadow-lg shadow-blue-200'}
+                      : 'bg-[#1e293b] hover:bg-slate-800 shadow-lg shadow-blue-200'}
                   `}
                 >
                   {loading ? 'Analizando...' : 'Diagnosticar Error'}
                 </button>
 
-                {/* --- NUEVO BOTÓN PARA BORRAR TODO --- */}
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="w-full py-3 rounded-xl font-semibold text-gray-500 hover:bg-gray-100 transition-colors border border-gray-200"
+                  className="w-full py-3 rounded-xl font-semibold text-red-500 hover:bg-red-50 transition-colors border border-red-100"
                 >
                   Borrar Todo
                 </button>
@@ -139,7 +141,7 @@ const App: React.FC = () => {
             </form>
           </div>
 
-          {/* History */}
+          {/* Historial */}
           {history.length > 0 && (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Consultas Recientes</h2>
@@ -150,49 +152,6 @@ const App: React.FC = () => {
                     onClick={() => {
                       setErrorCode(item.code);
                       setDeviceType(item.deviceType);
-                      diagnoseError(item.code, item.deviceType, '').then(setDiagnosis).catch(setError);
-                    }}
-                    className="w-full flex items-center justify-between p-3 rounded-xl border border-transparent hover:bg-blue-50 hover:border-blue-100 transition-all text-left group"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-gray-900 group-hover:text-blue-700">{item.code}</div>
-                      <div className="text-[10px] text-gray-400">{item.deviceType}</div>
-                    </div>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="lg:col-span-3">
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl mb-6">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
-
-          {!diagnosis && !loading && !error && (
-            <div className="flex flex-col items-center justify-center py-20 text-center px-4 bg-white rounded-3xl border-2 border-dashed border-gray-200">
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">¿Cómo podemos ayudarte hoy?</h3>
-              <p className="text-gray-500 max-w-md">
-                Ingresa el código y cuéntanos qué síntomas tiene el equipo para un diagnóstico más preciso.
-              </p>
-            </div>
-          )}
-
-          {loading && (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-48 bg-gray-200 rounded-2xl w-full"></div>
-            </div>
-          )}
-
-          {diagnosis && <DiagnosisResult diagnosis={diagnosis} />}
-        </div>
-      </div>
-    </Layout>
-  );
-};
-
-export default App;
+                      setExtraInfo(''); // Limpiar info extra al cargar del historial
+                      // Ejecutar búsqueda automáticamente
+                      diagnoseError(item.code, item.deviceType, '').then(setDiagnosis).catch
