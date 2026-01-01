@@ -49,14 +49,22 @@ const App: React.FC = () => {
     }
   };
 
-  // LIMPIEZA TOTAL: Borra campos, diagnóstico e historial
+  // --- FUNCIÓN DE LIMPIEZA REFORZADA ---
   const clearSearch = () => {
+    // 1. Limpiamos los inputs y resultados de pantalla
     setErrorCode('');
     setExtraInfo(''); 
     setDiagnosis(null);
     setError(null);
-    setHistory([]); // Limpia la lista visual
-    localStorage.removeItem('hvac_search_history'); // Borra la memoria física
+
+    // 2. IMPORTANTE: Forzamos el vaciado del estado del historial
+    setHistory([]); 
+
+    // 3. Eliminamos el registro físico del navegador
+    localStorage.removeItem('hvac_search_history');
+    
+    // Opcional: Limpiar todo el almacenamiento si hubiera residuos
+    localStorage.clear();
   };
 
   return (
@@ -119,39 +127,4 @@ const App: React.FC = () => {
               <div className="flex flex-col gap-3">
                 <button
                   type="submit"
-                  disabled={loading || !errorCode}
-                  className={`
-                    w-full py-4 rounded-xl font-bold text-white transition-all transform active:scale-95
-                    ${loading || !errorCode 
-                      ? 'bg-gray-300 cursor-not-allowed' 
-                      : 'bg-[#1e293b] hover:bg-slate-800 shadow-lg shadow-blue-200'}
-                  `}
-                >
-                  {loading ? 'Analizando...' : 'Diagnosticar Error'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={clearSearch}
-                  className="w-full py-3 rounded-xl font-semibold text-red-500 hover:bg-red-50 transition-colors border border-red-100"
-                >
-                  Borrar Todo
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Historial */}
-          {history.length > 0 && (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Consultas Recientes</h2>
-              <div className="space-y-3">
-                {history.map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setErrorCode(item.code);
-                      setDeviceType(item.deviceType);
-                      setExtraInfo(''); // Limpiar info extra al cargar del historial
-                      // Ejecutar búsqueda automáticamente
-                      diagnoseError(item.code, item.deviceType, '').then(setDiagnosis).catch
+                  disabled={loading || !
