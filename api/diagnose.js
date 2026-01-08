@@ -10,8 +10,8 @@ export default async function handler(req, res) {
     const { code, deviceType } = req.body;
 
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    // Cambiamos a flash-lite que tiene cuotas más relajadas
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+    // Volvemos al 1.5-flash que es el que tiene la cuota más amplia para cuentas gratuitas
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
     const auth = new google.auth.GoogleAuth({
@@ -32,10 +32,11 @@ export default async function handler(req, res) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 5000); 
+      // Reducimos el contexto al mínimo para no agotar la cuota de tokens
+      context = pdfData.text.substring(0, 3000); 
     }
 
-    const prompt = `Experto Samsung HVAC. Error ${code}, equipo ${deviceType}. Manual: ${context}. Responde solo JSON: {"code":"${code}","title":"Nombre","description":"Info","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Info"}],"severity":"medium"}`;
+    const prompt = `Resuelve error Samsung HVAC: ${code} en ${deviceType}. Manual: ${context}. Responde solo JSON: {"code":"${code}","title":"Nombre","description":"Explicación","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Detalle"}],"severity":"medium"}`;
 
     const result = await model.generateContent(prompt);
     const responseIA = await result.response;
@@ -45,10 +46,9 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("ERROR DETECTADO:", error);
-    // Si es error de cuota, avisamos al usuario
-    if (error.status === 429) {
-      return res.status(429).json({ error: "Límite alcanzado", message: "Espera 1 minuto y vuelve a intentar." });
-    }
-    return res.status(500).json({ error: "Error de servidor", message: error.message });
+    return res.status(error.status || 500).json({ 
+      error: "Error de cuota o servidor", 
+      message: error.message 
+    });
   }
 }
