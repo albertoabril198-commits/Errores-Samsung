@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { GoogleGenAI } from "@google/generative-ai";
 import { GoogleGenAI } from "@google/genai";
 import pdf from 'pdf-parse';
 
