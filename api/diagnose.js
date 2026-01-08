@@ -10,9 +10,8 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // 1. IA Config - USAMOS EL MODELO QUE TU LISTA CONFIRMÓ COMO DISPONIBLE
+    // 1. IA Config - USAMOS EL NOMBRE EXACTO QUE SALÍA EN TU LISTA DEL NAVEGADOR
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    // Usamos gemini-2.0-flash que es extremadamente rápido y ya aparece en tu JSON
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     // 2. Google Drive Config
@@ -36,25 +35,36 @@ export default async function handler(req, res) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 8000); 
+      context = pdfData.text.substring(0, 7000); 
     }
 
     // 4. Prompt y Respuesta
-    const prompt = `Actúa como experto Samsung HVAC. Resuelve el error ${code} para ${deviceType}. 
-    Información manual: ${context}.
+    const prompt = `Como experto Samsung HVAC, resuelve el error ${code} para ${deviceType}.
+    Contexto manual: ${context}
     Responde estrictamente en JSON:
-    {"code":"${code}","title":"Nombre","description":"Explicación","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Explicación"}],"severity":"medium"}`;
+    {
+      "code": "${code}",
+      "title": "Nombre",
+      "description": "Explicación",
+      "possibleCauses": ["causa"],
+      "steps": [{"instruction": "paso", "detail": "detalle"}],
+      "severity": "medium"
+    }`;
 
+    // Generamos el contenido
     const result = await model.generateContent(prompt);
     const responseIA = await result.response;
-    let textIA = responseIA.text().trim().replace(/```json|```/g, "");
+    let textIA = responseIA.text().trim();
+    
+    // Limpiamos Markdown si existe
+    textIA = textIA.replace(/```json|```/g, "").trim();
     
     return res.status(200).json(JSON.parse(textIA));
 
   } catch (error) {
     console.error("ERROR DETECTADO:", error);
     return res.status(500).json({ 
-      error: "Error técnico", 
+      error: "Error de servidor", 
       message: error.message 
     });
   }
