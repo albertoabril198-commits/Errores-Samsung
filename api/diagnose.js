@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import pdf from 'pdf-parse/lib/pdf-parse.js'; // Importación corregida para Vercel
 
 export default async function handler(req, res) {
+  // Aseguramos que la respuesta siempre sea JSON
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
@@ -10,9 +11,9 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // 1. IA Config
+    // 1. IA Config - Modificación del nombre del modelo para evitar el 404
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
     // 2. Google Drive Config
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
@@ -30,36 +31,47 @@ export default async function handler(req, res) {
       pageSize: 1
     });
 
-    let context = "No se pudo extraer texto del manual.";
+    let context = "No se pudo extraer texto específico del manual.";
     if (driveRes.data.files && driveRes.data.files.length > 0) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       
-      // Usamos el buffer directamente
+      // Procesamos el PDF
       const pdfData = await pdf(Buffer.from(response.data));
       context = pdfData.text.substring(0, 12000); 
     }
 
-    // 4. Prompt y Respuesta
-    const prompt = `Como experto Samsung HVAC, resuelve el error ${code} para ${deviceType}.
-    Información del manual: ${context}
-    Responde estrictamente en JSON:
+    // 4. Prompt y Respuesta de Gemini
+    const prompt = `Actúa como un experto técnico de Samsung HVAC.
+    Resuelve el error ${code} para el equipo ${deviceType}.
+    Usa este contexto del manual: ${context}
+    
+    Responde estrictamente en formato JSON puro:
     {
       "code": "${code}",
       "title": "Nombre del Error",
       "description": "Explicación breve",
       "possibleCauses": ["Causa 1"],
-      "steps": [{"instruction": "Paso 1", "detail": "Explicación"}],
+      "steps": [{"instruction": "Paso 1", "detail": "Detalle técnico"}],
       "severity": "medium"
     }`;
 
+    // Generar contenido y esperar la respuesta completa
     const result = await model.generateContent(prompt);
-    const text = result.response.text().trim().replace(/```json|```/g, "");
+    const responseIA = await result.response;
+    let textIA = responseIA.text().trim();
     
-    return res.status(200).json(JSON.parse(text));
+    // Limpiamos Markdown si la IA lo incluye por error
+    textIA = textIA.replace(/```json|```/g, "").trim();
+    
+    // Devolvemos el JSON parseado
+    return res.status(200).json(JSON.parse(textIA));
 
   } catch (error) {
-    console.error("ERROR:", error);
-    return res.status(500).json({ error: "Error en el servidor", message: error.message });
+    console.error("ERROR DETECTADO:", error);
+    return res.status(500).json({ 
+      error: "Error interno del servidor", 
+      message: error.message 
+    });
   }
 }
