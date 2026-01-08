@@ -9,9 +9,10 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
+    // Usamos el modelo 2.0 que es el más rápido procesando textos largos
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // 1. Google Drive - Lectura ultra rápida
+    // 1. Google Drive - Conexión rápida
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -29,36 +30,40 @@ export default async function handler(req, res) {
     if (driveRes.data.files?.length > 0) {
       const response = await drive.files.get({ fileId: driveRes.data.files[0].id, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      // Tomamos solo 1000 caracteres para que la respuesta sea instantánea
-      context = pdfData.text.substring(0, 1000); 
+      // AMPLIAMOS EL CONTEXTO: 6000 caracteres es el punto dulce entre precisión y tiempo
+      context = pdfData.text.substring(0, 6000); 
     }
 
-    // 2. Prompt simplificado al extremo
-    const prompt = `Como experto Samsung HVAC, dime la solucion del error ${code} para ${deviceType}. 
-    Usa este manual: ${context}.
-    Responde UNICAMENTE un objeto JSON con: code, title, description, possibleCauses (array), steps (array de objetos con instruction y detail), severity.`;
+    // 2. Prompt de alta precisión técnica
+    const prompt = `Actúa como un Ingeniero Senior de Samsung HVAC. 
+    Analiza detalladamente el error "${code}" para el modelo "${deviceType}" usando esta base de conocimientos:
+    ---
+    ${context}
+    ---
+    Proporciona una solución técnica precisa. Responde ESTRICTAMENTE en JSON:
+    {
+      "code": "${code}",
+      "title": "Nombre técnico",
+      "description": "Explicación detallada",
+      "possibleCauses": ["Causa técnica 1", "Causa técnica 2"],
+      "steps": [{"instruction": "Paso técnico", "detail": "Explicación de cómo medir o comprobar"}],
+      "severity": "high"
+    }`;
 
     const result = await model.generateContent(prompt);
     const responseIA = await result.response;
     let textIA = responseIA.text().trim();
     
-    // Limpieza profunda de JSON
-    const jsonStart = textIA.indexOf('{');
-    const jsonEnd = textIA.lastIndexOf('}') + 1;
-    const cleanJson = textIA.substring(jsonStart, jsonEnd);
-    
+    // Limpieza de JSON robusta
+    const cleanJson = textIA.substring(textIA.indexOf('{'), textIA.lastIndexOf('}') + 1);
     return res.status(200).json(JSON.parse(cleanJson));
 
   } catch (error) {
-    console.error("DETALLE:", error);
-    // Si falla el manual, intentamos responder con el conocimiento general de la IA
-    return res.status(200).json({ 
-      code: "INFO", 
-      title: "Diagnóstico Genérico", 
-      description: "No pudimos leer el manual específico, pero esto es lo que indica el error " + req.body.code,
-      possibleCauses: ["Fallo de comunicación", "Sensor defectuoso"],
-      steps: [{"instruction": "Revisar cableado", "detail": "Verifica las conexiones entre placas."}],
-      severity: "medium"
+    console.error("LOG DE ERROR:", error);
+    // Si realmente hay un timeout o fallo, devolvemos un error real para que lo veas en la consola
+    return res.status(500).json({ 
+      error: "Error de procesamiento", 
+      message: "La IA no pudo procesar el manual a tiempo. Intenta con un código más específico." 
     });
   }
 }
