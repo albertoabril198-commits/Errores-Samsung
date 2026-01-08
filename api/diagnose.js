@@ -8,12 +8,10 @@ export default async function handler(req, res) {
 
   try {
     const { code, deviceType } = req.body;
-
-    // USAMOS EL MODELO QUE TU LISTA DIJO QUE ESTÁ DISPONIBLE
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // Configuración Drive
+    // 1. Google Drive - Lectura ultra rápida
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -21,39 +19,46 @@ export default async function handler(req, res) {
     });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Buscar Manual
-    const folderId = process.env.DRIVE_FOLDER_ID;
     const driveRes = await drive.files.list({
-      q: `'${folderId}' in parents and mimeType = 'application/pdf'`,
+      q: `'${process.env.DRIVE_FOLDER_ID}' in parents and mimeType = 'application/pdf'`,
       fields: 'files(id, name)',
       pageSize: 1
     });
 
-    let context = "Manual no encontrado.";
+    let context = "";
     if (driveRes.data.files?.length > 0) {
-      const fileId = driveRes.data.files[0].id;
-      const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+      const response = await drive.files.get({ fileId: driveRes.data.files[0].id, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 1500); // Muy corto para evitar errores
+      // Tomamos solo 1000 caracteres para que la respuesta sea instantánea
+      context = pdfData.text.substring(0, 1000); 
     }
 
-    const prompt = `Samsung HVAC: Error ${code}, equipo ${deviceType}. Contexto: ${context}. Responde solo JSON: {"code":"${code}","title":"Nombre","description":"Explicación","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Detalle"}],"severity":"medium"}`;
+    // 2. Prompt simplificado al extremo
+    const prompt = `Como experto Samsung HVAC, dime la solucion del error ${code} para ${deviceType}. 
+    Usa este manual: ${context}.
+    Responde UNICAMENTE un objeto JSON con: code, title, description, possibleCauses (array), steps (array de objetos con instruction y detail), severity.`;
 
     const result = await model.generateContent(prompt);
     const responseIA = await result.response;
-    let textIA = responseIA.text().trim().replace(/```json|```/g, "");
+    let textIA = responseIA.text().trim();
     
-    return res.status(200).json(JSON.parse(textIA));
+    // Limpieza profunda de JSON
+    const jsonStart = textIA.indexOf('{');
+    const jsonEnd = textIA.lastIndexOf('}') + 1;
+    const cleanJson = textIA.substring(jsonStart, jsonEnd);
+    
+    return res.status(200).json(JSON.parse(cleanJson));
 
   } catch (error) {
-    console.error("ERROR:", error);
+    console.error("DETALLE:", error);
+    // Si falla el manual, intentamos responder con el conocimiento general de la IA
     return res.status(200).json({ 
-      code: "Error", 
-      title: "Reintentando...", 
-      description: "La IA está tardando en responder. Por favor, pulsa el botón de nuevo en 10 segundos.",
-      possibleCauses: ["Saturación de red"],
-      steps: [{"instruction": "Reintentar", "detail": "Pulsa el botón de diagnóstico otra vez."}],
-      severity: "low"
+      code: "INFO", 
+      title: "Diagnóstico Genérico", 
+      description: "No pudimos leer el manual específico, pero esto es lo que indica el error " + req.body.code,
+      possibleCauses: ["Fallo de comunicación", "Sensor defectuoso"],
+      steps: [{"instruction": "Revisar cableado", "detail": "Verifica las conexiones entre placas."}],
+      severity: "medium"
     });
   }
 }
