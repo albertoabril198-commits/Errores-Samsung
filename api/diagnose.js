@@ -10,9 +10,9 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // 1. IA Config - Usamos "gemini-1.5-flash-latest" para forzar la versión más compatible
+    // 1. IA Config - Probamos con gemini-1.5-pro para descartar error de modelo flash
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     // 2. Google Drive Config
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
@@ -35,22 +35,24 @@ export default async function handler(req, res) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 7000); 
+      context = pdfData.text.substring(0, 5000); // Reducimos más para evitar errores de red
     }
 
     // 4. Prompt y Respuesta
-    const prompt = `Resuelve el error ${code} para Samsung HVAC ${deviceType}. Contexto: ${context}. Responde solo JSON puro.`;
+    const prompt = `Como experto Samsung HVAC, resuelve el error ${code} para ${deviceType}. 
+    Manual: ${context}. 
+    Responde ÚNICAMENTE un JSON con este formato: 
+    {"code": "${code}", "title": "Nombre", "description": "Info", "possibleCauses": ["Causa"], "steps": [{"instruction": "Paso", "detail": "Detalle"}], "severity": "medium"}`;
 
     const result = await model.generateContent(prompt);
-    const responseIA = await result.response;
-    let textIA = responseIA.text().trim().replace(/```json|```/g, "");
+    const textIA = result.response.text().trim().replace(/```json|```/g, "");
     
     return res.status(200).json(JSON.parse(textIA));
 
   } catch (error) {
     console.error("ERROR DETECTADO:", error);
     return res.status(500).json({ 
-      error: "Error de comunicación con Gemini", 
+      error: "Error de servidor", 
       message: error.message 
     });
   }
