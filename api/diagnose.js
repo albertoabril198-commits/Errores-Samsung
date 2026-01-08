@@ -9,11 +9,10 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // Usamos 1.5-flash que es el más estable para cuotas gratuitas
+    // CAMBIO CLAVE: Usamos la versión 2.0 que confirmamos que está en tu lista
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // Configuración de Drive
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -21,7 +20,6 @@ export default async function handler(req, res) {
     });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Obtener Manual (Solo los primeros 2000 caracteres para ahorrar cuota)
     const folderId = process.env.DRIVE_FOLDER_ID;
     const driveRes = await drive.files.list({
       q: `'${folderId}' in parents and mimeType = 'application/pdf'`,
@@ -34,7 +32,7 @@ export default async function handler(req, res) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 2000); 
+      context = pdfData.text.substring(0, 3000); 
     }
 
     const prompt = `Samsung HVAC Error: ${code} (${deviceType}). Manual: ${context}. Responde solo JSON: {"code":"${code}","title":"Nombre","description":"Info","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Detalle"}],"severity":"medium"}`;
@@ -46,14 +44,10 @@ export default async function handler(req, res) {
     return res.status(200).json(JSON.parse(textIA));
 
   } catch (error) {
-    console.error("ERROR:", error);
-    // Respuesta especial para error de cuota
-    if (error.status === 429) {
-      return res.status(429).json({ 
-        error: "Límite de Google alcanzado", 
-        message: "Google ha pausado las peticiones gratuitas. Espera 2 minutos y prueba de nuevo." 
-      });
-    }
-    return res.status(500).json({ error: "Error de servidor", message: error.message });
+    console.error("DETALLE ERROR:", error);
+    return res.status(error.status || 500).json({ 
+      error: "Fallo en diagnóstico", 
+      message: error.message 
+    });
   }
 }
