@@ -10,9 +10,9 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // 1. IA Config - CORRECCIÓN CRÍTICA: Quitamos "models/" del nombre
+    // 1. IA Config - Usamos "gemini-1.5-flash-latest" para forzar la versión más compatible
     const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
     // 2. Google Drive Config
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
@@ -35,37 +35,22 @@ export default async function handler(req, res) {
       const fileId = driveRes.data.files[0].id;
       const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
       const pdfData = await pdf(Buffer.from(response.data));
-      context = pdfData.text.substring(0, 8000); // Reducido para mayor estabilidad
+      context = pdfData.text.substring(0, 7000); 
     }
 
-    // 4. Prompt y Respuesta de Gemini
-    const prompt = `Como experto Samsung HVAC, resuelve el error ${code} para ${deviceType}.
-    Contexto manual: ${context}
-    Responde estrictamente en JSON:
-    {
-      "code": "${code}",
-      "title": "Nombre",
-      "description": "Explicación",
-      "possibleCauses": ["causa"],
-      "steps": [{"instruction": "paso", "detail": "detalle"}],
-      "severity": "medium"
-    }`;
+    // 4. Prompt y Respuesta
+    const prompt = `Resuelve el error ${code} para Samsung HVAC ${deviceType}. Contexto: ${context}. Responde solo JSON puro.`;
 
-    // Generación con manejo de respuesta asíncrona correcto
     const result = await model.generateContent(prompt);
     const responseIA = await result.response;
-    let textIA = responseIA.text().trim();
-    
-    // Limpieza de Markdown
-    textIA = textIA.replace(/```json|```/g, "").trim();
+    let textIA = responseIA.text().trim().replace(/```json|```/g, "");
     
     return res.status(200).json(JSON.parse(textIA));
 
   } catch (error) {
     console.error("ERROR DETECTADO:", error);
-    // Enviamos el mensaje real a la App para saber si es la API Key
     return res.status(500).json({ 
-      error: "Fallo en diagnóstico", 
+      error: "Error de comunicación con Gemini", 
       message: error.message 
     });
   }
