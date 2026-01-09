@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
     let manualContext = "No se pudo acceder al manual a tiempo.";
 
-    // INTENTO DE LECTURA FLASH (Máximo 2 segundos)
+    // INTENTO DE LECTURA FLASH (Máximo 10 segundos)
     try {
       const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
       const auth = new google.auth.GoogleAuth({
