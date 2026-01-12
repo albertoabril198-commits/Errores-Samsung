@@ -1,68 +1,60 @@
-import * as genai from "@google/generative-ai";
 import { google } from 'googleapis';
+import { GoogleGenAI } from "@google/genai";
+import pdf from 'pdf-parse'; // Nueva librería para leer el interior
 
 export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
   try {
     const { code, deviceType } = req.body;
-    const genAI = new genai.GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    let manualContext = "No se pudo acceder al manual a tiempo.";
+    // 1. Conexión a Drive
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    });
+    const drive = google.drive({ version: 'v3', auth });
 
-    // INTENTO DE LECTURA FLASH (Máximo 10 segundos)
-    try {
-      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON.trim());
-      const auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-      });
-      const drive = google.drive({ version: 'v3', auth });
+    // 2. Buscar el manual más relevante (ej. que contenga "RAC" o "DVM")
+    const folderId = process.env.DRIVE_FOLDER_ID;
+    const driveRes = await drive.files.list({
+      q: `'${folderId}' in parents and name contains '${deviceType}'`,
+      fields: 'files(id, name)',
+    });
 
-      const driveRes = await Promise.race([
-        drive.files.list({
-          q: `'${process.env.DRIVE_FOLDER_ID}' in parents`,
-          fields: 'files(id, name, size)',
-          pageSize: 1
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Drive Lento')), 2000))
-      ]);
-
-      // Si el archivo es mayor a 5MB, ni siquiera intentamos descargarlo para evitar el bloqueo
-      if (driveRes.data.files?.length > 0) {
-        const file = driveRes.data.files[0];
-        if (parseInt(file.size) < 5000000) { 
-          const fileContent = await drive.files.get({ fileId: file.id, alt: 'media' });
-          manualContext = typeof fileContent.data === 'string' ? fileContent.data.substring(0, 5000) : "Archivo no legible.";
-        }
-      }
-    } catch (e) {
-      console.log("Modo rápido activado: Usando conocimiento base de Gemini.");
+    let manualText = "";
+    if (driveRes.data.files.length > 0) {
+      // Descargamos el primer manual encontrado para analizarlo
+      const fileId = driveRes.data.files[0].id;
+      const fileContent = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+      
+      const pdfData = await pdf(Buffer.from(fileContent.data));
+      manualText = pdfData.text.substring(0, 10000); // Enviamos los primeros 10k caracteres (suficiente para errores)
     }
 
-    const prompt = `Como experto en climatización Samsung HVAC, resuelve el error ${code} para el equipo ${deviceType}. 
-    Información del manual (si está disponible): ${manualContext}.
-    Responde estrictamente en JSON con esta estructura: 
-    {"code":"${code}","title":"Nombre","description":"Explicación","possibleCauses":["Causa"],"steps":[{"instruction":"Paso","detail":"Explicación"}],"severity":"high"}`;
+    // 3. Consulta a Gemini con el TEXTO REAL del manual
+    const genAI = new GoogleGenAI(process.env.VITE_GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `
+      Eres un técnico experto de Samsung HVAC.
+      Utiliza el siguiente extracto del manual técnico original:
+      ---
+      ${manualText}
+      ---
+      El equipo ${deviceType} tiene el error ${code}. 
+      Si el error aparece en el texto anterior, da la solución exacta del manual.
+      Si no aparece, usa tu conocimiento general pero advierte que es una estimación.
+      
+      Responde en JSON: { "code", "title", "description", "possibleCauses": [], "steps": [], "severity" }
+    `;
 
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    
-    return res.status(200).json(JSON.parse(cleanJson));
+    const text = result.response.text().replace(/```json|```/g, "");
+    res.status(200).json(JSON.parse(text));
 
   } catch (error) {
-    // Si todo lo anterior falla, Gemini responde con lo que sabe por defecto
-    return res.status(200).json({ 
-      code: req.body.code,
-      title: "Diagnóstico de Emergencia",
-      description: "Error al procesar el manual pesado. Basado en conocimiento general: " + error.message,
-      possibleCauses: ["Fallo de sensor", "Problema de placa"],
-      steps: [{"instruction": "Revisión básica", "detail": "Verificar alimentación y cableado de señal."}],
-      severity: "medium"
-    });
+    console.error(error);
+    res.status(500).json({ error: "Error analizando el manual" });
   }
 }
