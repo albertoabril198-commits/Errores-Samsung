@@ -1,32 +1,37 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Usamos la clave que ya tienes configurada
+// Inicializamos la IA
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-export const getDiagnose = async (code, deviceType) => {
+export const diagnoseError = async (code: string, deviceType: string, extraInfo: string) => {
   try {
-    // Usamos el modelo que funcionaba originalmente
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const prompt = `Eres un técnico experto en Samsung HVAC. 
-    Diagnostica el error "${code}" para el equipo "${deviceType}". 
-    Responde estrictamente en formato JSON:
-    {
-      "code": "${code}",
-      "title": "Nombre del error",
-      "description": "Explicación",
-      "possibleCauses": ["causa 1"],
-      "steps": ["paso 1"],
-      "severity": "Media"
-    }`;
+    const prompt = `
+      Eres un técnico experto senior de Samsung HVAC.
+      Diagnostica el siguiente error:
+      Equipo: ${deviceType}
+      Código: ${code}
+      Información extra: ${extraInfo}
+
+      Responde estrictamente en formato JSON:
+      {
+        "code": "${code}",
+        "title": "Nombre corto del error",
+        "description": "Explicación detallada",
+        "possibleCauses": ["causa 1", "causa 2"],
+        "steps": ["paso 1", "paso 2"],
+        "severity": "Alta/Media/Baja"
+      }
+    `;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text().replace(/```json|```/g, "").trim();
+    let text = response.text().replace(/```json|```/g, "").trim();
     
     return JSON.parse(text);
-  } catch (error) {
-    console.error("Error en Gemini Service:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Error en el servicio Gemini:", error);
+    throw new Error("No se pudo obtener el diagnóstico. Revisa tu conexión o la API Key.");
   }
 };
