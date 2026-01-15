@@ -8,29 +8,27 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
 
-    // 1. Configuramos la API forzando la versión 'v1'
+    // 1. Inicialización limpia
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
-    // 2. Obtenemos el modelo especificando que use la versión estable
-    // Pasamos un segundo argumento opcional para asegurar la API v1
-    const model = genAI.getGenerativeModel(
-      { model: "gemini-1.5-flash" },
-      { apiVersion: 'v1' } 
-    );
+    // 2. Usamos el alias 'latest' que fuerza a la API a encontrar la versión activa
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash-latest" 
+    });
 
-    const prompt = `Eres experto en aire acondicionado Samsung. 
-    Analiza el error "${code}" para "${deviceType}".
-    Responde en JSON:
+    const prompt = `Actúa como soporte técnico de Samsung HVAC. 
+    Analiza el error "${code}" para el equipo "${deviceType}".
+    Responde estrictamente en formato JSON:
     {
       "code": "${code}",
-      "title": "Nombre",
-      "description": "Significado",
-      "possibleCauses": ["causa"],
-      "steps": ["paso"],
+      "title": "Nombre del error",
+      "description": "Explicación",
+      "possibleCauses": ["causa 1"],
+      "steps": ["paso 1"],
       "severity": "Media"
     }`;
 
-    // 3. Llamada directa
+    // 3. Generación de contenido
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text().replace(/```json|```/g, "").trim();
@@ -38,9 +36,9 @@ export default async function handler(req, res) {
     return res.status(200).json(JSON.parse(text));
 
   } catch (error) {
-    console.error("Error detectado:", error);
+    console.error("Error en el servidor:", error);
     return res.status(500).json({ 
-      error: "Error de comunicación con Google AI Studio",
+      error: "Error de comunicación con la IA",
       details: error.message 
     });
   }
