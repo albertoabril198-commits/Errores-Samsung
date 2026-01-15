@@ -1,47 +1,41 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 export default async function handler(req, res) {
-  // 1. Cabeceras básicas
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
     const { code, deviceType } = req.body;
+    const apiKey = process.env.VITE_GEMINI_API_KEY;
 
-    // 2. Inicialización limpia (La que funcionó al principio)
-    const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
-    
-    // Usamos el modelo base sin configuraciones adicionales de herramientas
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Construimos la URL manualmente para evitar el error 404 de la librería
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    const prompt = `Actúa como un experto técnico de Samsung HVAC. 
-    Analiza el error "${code}" para el equipo "${deviceType}".
-    Proporciona el significado del error, causas probables y pasos para resolverlo.
-    Responde estrictamente en formato JSON con esta estructura:
-    {
-      "code": "${code}",
-      "title": "...",
-      "description": "...",
-      "possibleCauses": ["..."],
-      "steps": ["..."],
-      "severity": "..."
-    }`;
+    const body = {
+      contents: [{
+        parts: [{
+          text: `Eres un técnico experto en Samsung HVAC. Explica el error "${code}" para el equipo "${deviceType}". Responde estrictamente en formato JSON: {"code": "${code}", "title": "Nombre corto", "description": "Explicación", "possibleCauses": ["causa 1"], "steps": ["paso 1"], "severity": "Media"}`
+        }]
+      }]
+    };
 
-    // 3. Ejecución directa
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
-    
-    // Limpiamos el texto por si Gemini añade formato markdown
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || 'Error en la API de Google');
+    }
+
+    // Extraemos el texto de la respuesta de Google
+    let text = data.candidates[0].content.parts[0].text;
     text = text.replace(/```json|```/g, "").trim();
 
-    // 4. Enviamos la respuesta
     return res.status(200).json(JSON.parse(text));
 
   } catch (error) {
-    console.error("Error en la IA:", error);
-    return res.status(500).json({ 
-      error: "Error al generar el diagnóstico", 
-      details: error.message 
-    });
+    console.error("Error diagnóstico:", error);
+    return res.status(500).json({ error: "Fallo en la conexión", details: error.message });
   }
 }
