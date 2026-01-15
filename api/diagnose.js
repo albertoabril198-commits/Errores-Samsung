@@ -1,33 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default async function handler(req, res) {
+  // 1. Cabeceras básicas
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
     const { code, deviceType } = req.body;
-    
-    // 1. Inicialización
+
+    // 2. Inicialización limpia (La que funcionó al principio)
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
-    // 2. Usamos la ruta COMPLETA del modelo. 
-    // En regiones con restricciones, esto es vital para evitar el 404.
-    const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
+    // Usamos el modelo base sin configuraciones adicionales de herramientas
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const prompt = `Eres técnico de Samsung HVAC. Error: ${code}, Equipo: ${deviceType}. 
-    Responde solo este JSON: {"code": "${code}", "title": "...", "description": "...", "possibleCauses": [], "steps": [], "severity": "Media"}`;
+    const prompt = `Actúa como un experto técnico de Samsung HVAC. 
+    Analiza el error "${code}" para el equipo "${deviceType}".
+    Proporciona el significado del error, causas probables y pasos para resolverlo.
+    Responde estrictamente en formato JSON con esta estructura:
+    {
+      "code": "${code}",
+      "title": "...",
+      "description": "...",
+      "possibleCauses": ["..."],
+      "steps": ["..."],
+      "severity": "..."
+    }`;
 
-    // 3. Generación con reintentos internos
+    // 3. Ejecución directa
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text().replace(/```json|```/g, "").trim();
+    let text = response.text();
     
+    // Limpiamos el texto por si Gemini añade formato markdown
+    text = text.replace(/```json|```/g, "").trim();
+
+    // 4. Enviamos la respuesta
     return res.status(200).json(JSON.parse(text));
 
   } catch (error) {
-    console.error("Error técnico:", error);
-    // Si falla, intentamos devolver un error que nos dé más pistas
+    console.error("Error en la IA:", error);
     return res.status(500).json({ 
-      error: "Error de acceso a Gemini en tu región", 
+      error: "Error al generar el diagnóstico", 
       details: error.message 
     });
   }
