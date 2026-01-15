@@ -1,26 +1,32 @@
-import { ErrorDiagnosis, DeviceType } from "../types";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const diagnoseError = async (code: string, deviceType: DeviceType): Promise<ErrorDiagnosis> => {
+// Usamos la clave que ya tienes configurada
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+
+export const getDiagnose = async (code, deviceType) => {
   try {
-    // IMPORTANTE: Ahora llamamos a nuestra propia API en Vercel
-    const response = await fetch('/api/diagnose', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code, deviceType }),
-    });
+    // Usamos el modelo que funcionaba originalmente
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Error en la respuesta del servidor');
-    }
+    const prompt = `Eres un técnico experto en Samsung HVAC. 
+    Diagnostica el error "${code}" para el equipo "${deviceType}". 
+    Responde estrictamente en formato JSON:
+    {
+      "code": "${code}",
+      "title": "Nombre del error",
+      "description": "Explicación",
+      "possibleCauses": ["causa 1"],
+      "steps": ["paso 1"],
+      "severity": "Media"
+    }`;
 
-    const result = await response.json();
-    return result as ErrorDiagnosis;
-
-  } catch (error: any) {
-    console.error("Error en geminiService:", error);
-    throw new Error(error.message || "No se pudo obtener el diagnóstico oficial.");
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().replace(/```json|```/g, "").trim();
+    
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Error en Gemini Service:", error);
+    throw error;
   }
 };
