@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default async function handler(req, res) {
-  // Solo permitimos peticiones POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -10,42 +9,31 @@ export default async function handler(req, res) {
     const { code, deviceType } = req.body;
 
     if (!code || !deviceType) {
-      return res.status(400).json({ error: "Faltan datos: code o deviceType" });
+      return res.status(400).json({ error: "Faltan datos en la petición" });
     }
 
-    // 1. Configuración de Gemini 
-    // Usamos la API Key desde las variables de entorno de Vercel
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
-    // IMPORTANTE: Usamos "models/gemini-1.5-flash" para evitar el error 404
     const model = genAI.getGenerativeModel({ 
-      model: "models/gemini-1.5-flash",
-      tools: [
-        {
-          googleSearchRetrieval: {}, // Activa la búsqueda en Google en tiempo real
-        },
-      ],
+      model: "gemini-1.5-flash",
+      tools: [{ googleSearchRetrieval: {} }],
     });
 
-    // 2. Prompt optimizado para búsqueda técnica externa
-    const prompt = `
-      Actúa como un Ingeniero de Soporte Técnico Senior de Samsung HVAC.
-      Tu objetivo es encontrar información oficial sobre el siguiente error:
-      
-      EQUIPO: ${deviceType}
-      CÓDIGO DE ERROR: ${code}
+    const prompt = `Actúa como soporte técnico de Samsung HVAC. 
+    Busca el error "${code}" para el equipo "${deviceType}". 
+    Responde en JSON: {"code": "${code}", "title": "", "description": "", "possibleCauses": [], "steps": [], "severity": ""}`;
 
-      INSTRUCCIONES:
-      1. Realiza una búsqueda en la red para identificar el significado exacto de este código para este tipo de equipo Samsung.
-      2. Basándote en manuales de servicio o boletines técnicos, ofrece una solución paso a paso.
-      3. Responde ÚNICAMENTE en formato JSON siguiendo esta estructura:
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let text = response.text();
+    
+    text = text.replace(/```json|```/g, "").trim();
+    const jsonResponse = JSON.parse(text);
+    
+    return res.status(200).json(jsonResponse);
 
-      {
-        "code": "${code}",
-        "title": "Nombre breve del error",
-        "description": "Explicación de qué significa el error",
-        "possibleCauses": ["causa 1", "causa 2"],
-        "steps": ["paso 1", "paso 2"],
-        "severity": "Alta/Media/Baja"
-      }
-    `;
+  } catch (error) {
+    console.error("Error detallado:", error);
+    return res.status(500).json({ error: "Error en el servidor", details: error.message });
+  }
+}
