@@ -1,66 +1,51 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  // Solo permitimos peticiones POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
   try {
     const { code, deviceType } = req.body;
 
-    // 1. Configuración de Gemini (Usando la última versión del SDK)
+    if (!code || !deviceType) {
+      return res.status(400).json({ error: "Faltan datos: code o deviceType" });
+    }
+
+    // 1. Configuración de Gemini 
+    // Usamos la API Key desde las variables de entorno de Vercel
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
-    // Configuramos el modelo para usar la herramienta de Google Search
+    // IMPORTANTE: Usamos "models/gemini-1.5-flash" para evitar el error 404
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "models/gemini-1.5-flash",
       tools: [
         {
-          googleSearchRetrieval: {}, // Esto activa la búsqueda en Google
+          googleSearchRetrieval: {}, // Activa la búsqueda en Google en tiempo real
         },
       ],
     });
 
-    // 2. Prompt optimizado
-    // Hemos añadido una instrucción para que priorice la búsqueda web técnica
+    // 2. Prompt optimizado para búsqueda técnica externa
     const prompt = `
-      Actúa como un ingeniero de servicio técnico oficial de Samsung HVAC.
-      Busca en la red la información más reciente sobre el siguiente error:
+      Actúa como un Ingeniero de Soporte Técnico Senior de Samsung HVAC.
+      Tu objetivo es encontrar información oficial sobre el siguiente error:
       
-      Equipo: ${deviceType}
-      Código de Error: ${code}
+      EQUIPO: ${deviceType}
+      CÓDIGO DE ERROR: ${code}
 
-      Instrucciones:
-      - Busca manuales de servicio oficiales de Samsung y boletines técnicos.
-      - Proporciona una solución precisa.
-      - Responde estrictamente en formato JSON.
+      INSTRUCCIONES:
+      1. Realiza una búsqueda en la red para identificar el significado exacto de este código para este tipo de equipo Samsung.
+      2. Basándote en manuales de servicio o boletines técnicos, ofrece una solución paso a paso.
+      3. Responde ÚNICAMENTE en formato JSON siguiendo esta estructura:
 
-      Estructura de respuesta:
       {
         "code": "${code}",
-        "title": "Nombre corto del error",
-        "description": "Explicación detallada de qué significa el error según el manual",
+        "title": "Nombre breve del error",
+        "description": "Explicación de qué significa el error",
         "possibleCauses": ["causa 1", "causa 2"],
-        "steps": ["paso 1 para solucionar", "paso 2 para solucionar"],
+        "steps": ["paso 1", "paso 2"],
         "severity": "Alta/Media/Baja"
       }
     `;
-
-    // 3. Ejecución de la IA con búsqueda activa
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
-    
-    // Limpieza de formato Markdown
-    text = text.replace(/```json|```/g, "").trim();
-
-    // Intentamos parsear la respuesta
-    const jsonResponse = JSON.parse(text);
-    res.status(200).json(jsonResponse);
-
-  } catch (error) {
-    console.error("Error en Gemini con búsqueda web:", error);
-    res.status(500).json({ 
-      error: "Error al consultar el diagnóstico",
-      details: error.message 
-    });
-  }
-}
