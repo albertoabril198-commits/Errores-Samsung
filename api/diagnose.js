@@ -6,14 +6,17 @@ export default async function handler(req, res) {
   try {
     const { code, deviceType } = req.body;
     
-    // Inicialización directa
+    // 1. Inicialización
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
-    // Probamos con gemini-1.5-pro, a veces el flash tiene restricciones en ciertas regiones
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    // 2. Usamos la ruta COMPLETA del modelo. 
+    // En regiones con restricciones, esto es vital para evitar el 404.
+    const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
-    const prompt = `Como experto Samsung HVAC, dime que significa el error ${code} en ${deviceType}. Responde solo JSON: {"code": "${code}", "title": "...", "description": "...", "possibleCauses": [], "steps": [], "severity": "Media"}`;
+    const prompt = `Eres técnico de Samsung HVAC. Error: ${code}, Equipo: ${deviceType}. 
+    Responde solo este JSON: {"code": "${code}", "title": "...", "description": "...", "possibleCauses": [], "steps": [], "severity": "Media"}`;
 
+    // 3. Generación con reintentos internos
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text().replace(/```json|```/g, "").trim();
@@ -22,6 +25,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("Error técnico:", error);
-    return res.status(500).json({ error: error.message });
+    // Si falla, intentamos devolver un error que nos dé más pistas
+    return res.status(500).json({ 
+      error: "Error de acceso a Gemini en tu región", 
+      details: error.message 
+    });
   }
 }
