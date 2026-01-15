@@ -9,31 +9,49 @@ export default async function handler(req, res) {
     const { code, deviceType } = req.body;
 
     if (!code || !deviceType) {
-      return res.status(400).json({ error: "Faltan datos en la petición" });
+      return res.status(400).json({ error: "Faltan datos" });
     }
 
     const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
     
+    // Cambiamos a la versión '002' que tiene mejor soporte para tools
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-002" 
+    });
+
+    const prompt = `
+      Eres un experto en climatización Samsung. 
+      Busca información actualizada en internet sobre el error "${code}" para un equipo "${deviceType}".
+      Devuelve la respuesta estrictamente en este formato JSON:
+      {
+        "code": "${code}",
+        "title": "Nombre del error",
+        "description": "Significado",
+        "possibleCauses": ["causa 1"],
+        "steps": ["paso 1"],
+        "severity": "Media"
+      }
+    `;
+
+    // Pasamos las herramientas directamente en la generación del contenido
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
       tools: [{ googleSearchRetrieval: {} }],
     });
 
-    const prompt = `Actúa como soporte técnico de Samsung HVAC. 
-    Busca el error "${code}" para el equipo "${deviceType}". 
-    Responde en JSON: {"code": "${code}", "title": "", "description": "", "possibleCauses": [], "steps": [], "severity": ""}`;
-
-    const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
     
+    // Limpieza de formato
     text = text.replace(/```json|```/g, "").trim();
-    const jsonResponse = JSON.parse(text);
     
-    return res.status(200).json(jsonResponse);
+    res.status(200).json(JSON.parse(text));
 
   } catch (error) {
-    console.error("Error detallado:", error);
-    return res.status(500).json({ error: "Error en el servidor", details: error.message });
+    console.error("Error técnico:", error);
+    res.status(500).json({ 
+      error: "Error en el servidor", 
+      details: error.message 
+    });
   }
 }
