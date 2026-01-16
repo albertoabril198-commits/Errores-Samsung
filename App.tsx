@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import DiagnosisResult from './components/DiagnosisResult';
+// Importación actualizada al nuevo nombre del servicio
 import { diagnoseError } from './services/aiService';
 import { ErrorDiagnosis, DeviceType } from './types';
 
@@ -18,13 +19,16 @@ const App: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    setDiagnosis(null);
-
+    // No reseteamos el diagnosis aquí para evitar saltos bruscos en la UI
+    
     try {
       const result = await diagnoseError(errorCode, deviceType, extraInfo);
       setDiagnosis(result);
     } catch (err: any) {
-      setError(err.message || 'Ocurrió un error inesperado.');
+      console.error("Error en el componente:", err);
+      // Mostramos el mensaje de error exacto que viene del servicio
+      setError(err.message || 'Error de conexión con el servicio de IA.');
+      setDiagnosis(null);
     } finally {
       setLoading(false);
     }
@@ -40,7 +44,7 @@ const App: React.FC = () => {
   return (
     <Layout>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Columna de Formulario (Ocupa 1/4 en pantallas grandes) */}
+        {/* Columna de Formulario */}
         <div className="lg:col-span-1">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-24">
             <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
@@ -113,11 +117,12 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Columna de Resultados (Ocupa 3/4 en pantallas grandes) */}
+        {/* Columna de Resultados */}
         <div className="lg:col-span-3">
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl mb-6 text-red-700 text-sm">
-              {error}
+              <p className="font-bold">Aviso del Sistema:</p>
+              <p>{error}</p>
             </div>
           )}
 
