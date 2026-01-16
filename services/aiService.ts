@@ -1,37 +1,36 @@
 export const diagnoseError = async (code: string, deviceType: string, extraInfo: string): Promise<any> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Configuración incompleta: Falta la API Key.");
+  if (!apiKey) throw new Error("API Key no configurada en Netlify.");
 
-  // URL estable v1
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // CAMBIO: Usamos el ID de modelo más compatible actualmente
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{
-        text: `Eres experto en Samsung HVAC. Diagnostica el error "${code}" en el equipo "${deviceType}". Info extra: ${extraInfo}. 
-        Responde exclusivamente en formato JSON con estas llaves: code, title, description, possibleCauses (array), steps (array), severity.`
+        text: `Eres experto en Samsung HVAC. Diagnostica el error "${code}" en "${deviceType}". Info extra: ${extraInfo}. 
+        Responde exclusivamente en formato JSON: {"code": "${code}", "title": "...", "description": "...", "possibleCauses": [], "steps": [], "severity": "Media"}`
       }]
     }]
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(`Google dice: ${data.error?.message || 'Error de conexión'}`);
-  }
-
   try {
-    // Esta línea limpia el posible markdown (```json ...) que devuelve la IA
-    const rawText = data.candidates[0].content.parts[0].text;
-    const cleanJson = rawText.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleanJson);
-  } catch (e) {
-    throw new Error("La IA devolvió un formato no válido. Inténtalo de nuevo.");
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      // Si falla, Google nos dirá exactamente qué modelo prefiere
+      throw new Error(`Google dice: ${data.error?.message}`);
+    }
+
+    const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+    return JSON.parse(text);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 };
