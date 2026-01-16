@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import DiagnosisResult from './components/DiagnosisResult';
-// Importación actualizada al nuevo nombre del servicio
-import { diagnoseError } from './services/aiService';
+import { diagnoseError } from './logic/aiService';
 import { ErrorDiagnosis, DeviceType } from './types';
 
 const App: React.FC = () => {
@@ -11,7 +10,7 @@ const App: React.FC = () => {
   const [deviceType, setDeviceType] = useState<DeviceType>(DeviceType.RAC);
   const [loading, setLoading] = useState(false);
   const [diagnosis, setDiagnosis] = useState<ErrorDiagnosis | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string, isQuota: boolean} | null>(null);
 
   const handleDiagnose = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -19,15 +18,24 @@ const App: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    // No reseteamos el diagnosis aquí para evitar saltos bruscos en la UI
     
     try {
       const result = await diagnoseError(errorCode, deviceType, extraInfo);
       setDiagnosis(result);
     } catch (err: any) {
       console.error("Error en el componente:", err);
-      // Mostramos el mensaje de error exacto que viene del servicio
-      setError(err.message || 'Error de conexión con el servicio de IA.');
+      
+      // Detectamos si el error es por límite de cuota de Google
+      const isQuotaError = err.message.includes("429") || 
+                           err.message.toLowerCase().includes("quota") || 
+                           err.message.toLowerCase().includes("rate limit");
+
+      setError({
+        message: isQuotaError 
+          ? 'Has alcanzado el límite de consultas gratuitas por minuto. Por favor, espera 60 segundos e inténtalo de nuevo.' 
+          : (err.message || 'Error de conexión con el servicio de IA.'),
+        isQuota: isQuotaError
+      });
       setDiagnosis(null);
     } finally {
       setLoading(false);
@@ -120,9 +128,14 @@ const App: React.FC = () => {
         {/* Columna de Resultados */}
         <div className="lg:col-span-3">
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl mb-6 text-red-700 text-sm">
-              <p className="font-bold">Aviso del Sistema:</p>
-              <p>{error}</p>
+            <div className={`${error.isQuota ? 'bg-amber-50 border-amber-500 text-amber-800' : 'bg-red-50 border-red-500 text-red-700'} border-l-4 p-4 rounded-xl mb-6 text-sm`}>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="font-bold">{error.isQuota ? 'Límite de Consultas Alcanzado' : 'Aviso del Sistema'}</p>
+              </div>
+              <p className="mt-1 ml-7">{error.message}</p>
             </div>
           )}
 
