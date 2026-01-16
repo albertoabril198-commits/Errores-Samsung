@@ -1,15 +1,15 @@
 export const diagnoseError = async (code: string, deviceType: string, extraInfo: string): Promise<any> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("API Key no detectada en Netlify.");
+  if (!apiKey) throw new Error("API Key no detectada.");
 
-  // CAMBIO SEGURO: Usamos la versión v1 y el modelo PRO que tiene mayor disponibilidad
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+  // URL UNIVERSAL (v1beta + gemini-1.5-flash)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{
         text: `Eres experto en Samsung HVAC. Diagnostica el error "${code}" en "${deviceType}". Info extra: ${extraInfo}. 
-        Responde exclusivamente con un objeto JSON con estas llaves: "code", "title", "description", "possibleCauses", "steps", "severity".`
+        Responde exclusivamente con un JSON que tenga: code, title, description, possibleCauses (lista), steps (lista), severity.`
       }]
     }]
   };
@@ -27,13 +27,14 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
       throw new Error(`Google dice: ${data.error?.message || 'Error desconocido'}`);
     }
 
-    // Limpiamos la respuesta de posibles bloques de código markdown
+    // Limpiador avanzado de respuesta
     let text = data.candidates[0].content.parts[0].text;
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/); // Busca el primer { y el último }
     
-    return JSON.parse(text);
+    if (!jsonMatch) throw new Error("La IA no devolvió un formato JSON válido.");
+    
+    return JSON.parse(jsonMatch[0]);
   } catch (error: any) {
-    console.error(error);
-    throw new Error("Error en el diagnóstico: " + error.message);
+    throw new Error(error.message);
   }
 };
