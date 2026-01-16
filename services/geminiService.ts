@@ -2,20 +2,16 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("LA APP NO VE LA CLAVE. Revisa en Vercel que el nombre sea VITE_GEMINI_API_KEY");
+    throw new Error("LA APP NO VE LA CLAVE. Revisa Vercel.");
   }
 
-  // CAMBIO CLAVE: Usamos /v1/ y el modelo 'gemini-1.5-flash' (sin el -latest)
+  // FORZAMOS v1 y gemini-1.5-flash (Sin el -latest y sin v1beta)
   const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{
-        text: `Eres experto en soporte técnico de Samsung HVAC. 
-        Analiza el error "${code}" para el equipo "${deviceType}". 
-        Información extra: ${extraInfo}.
-        Responde exclusivamente en formato JSON: 
-        {"code": "${code}", "title": "Nombre", "description": "Explicación", "possibleCauses": [], "steps": [], "severity": "Media"}`
+        text: `Actúa como soporte técnico de Samsung HVAC. Diagnostica el error "${code}" para "${deviceType}". Info extra: ${extraInfo}. Responde solo JSON: {"code": "${code}", "title": "Nombre", "description": "Explicación", "possibleCauses": [], "steps": [], "severity": "Media"}`
       }]
     }]
   };
@@ -30,7 +26,7 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(`Google responde: ${data.error?.message || 'Error desconocido'}`);
+      throw new Error(`Google responde (${response.status}): ${data.error?.message || 'Error desconocido'}`);
     }
 
     const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
