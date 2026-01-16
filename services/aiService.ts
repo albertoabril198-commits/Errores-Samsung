@@ -1,15 +1,15 @@
 export const diagnoseError = async (code: string, deviceType: string, extraInfo: string): Promise<any> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("API Key no configurada en Netlify.");
+  if (!apiKey) throw new Error("API Key no detectada en Netlify.");
 
-  // CAMBIO: Usamos el ID de modelo más compatible actualmente
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // CAMBIO SEGURO: Usamos la versión v1 y el modelo PRO que tiene mayor disponibilidad
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{
         text: `Eres experto en Samsung HVAC. Diagnostica el error "${code}" en "${deviceType}". Info extra: ${extraInfo}. 
-        Responde exclusivamente en formato JSON: {"code": "${code}", "title": "...", "description": "...", "possibleCauses": [], "steps": [], "severity": "Media"}`
+        Responde exclusivamente con un objeto JSON con estas llaves: "code", "title", "description", "possibleCauses", "steps", "severity".`
       }]
     }]
   };
@@ -24,13 +24,16 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
     const data = await response.json();
     
     if (!response.ok) {
-      // Si falla, Google nos dirá exactamente qué modelo prefiere
-      throw new Error(`Google dice: ${data.error?.message}`);
+      throw new Error(`Google dice: ${data.error?.message || 'Error desconocido'}`);
     }
 
-    const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+    // Limpiamos la respuesta de posibles bloques de código markdown
+    let text = data.candidates[0].content.parts[0].text;
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    
     return JSON.parse(text);
   } catch (error: any) {
-    throw new Error(error.message);
+    console.error(error);
+    throw new Error("Error en el diagnóstico: " + error.message);
   }
 };
