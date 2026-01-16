@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import DiagnosisResult from './components/DiagnosisResult';
-import { diagnoseError } from './logic/aiService';
+import { diagnoseError } from './services/aiService';
 import { ErrorDiagnosis, DeviceType } from './types';
 
 const App: React.FC = () => {
