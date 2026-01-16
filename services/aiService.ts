@@ -3,22 +3,20 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
   if (!apiKey) throw new Error("API Key no detectada.");
 
   try {
-    // 1. PASO DE AUTO-DETECCIÓN
+    // 1. Detección automática del modelo (mantenemos esta lógica que ya te funciona)
     const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
     const listRes = await fetch(listUrl);
     const listData = await listRes.json();
 
-    if (!listRes.ok) throw new Error("No se pudo conectar con Google.");
-
     const availableModel = listData.models.find((m: any) => 
       m.supportedGenerationMethods.includes("generateContent") && 
-      (m.name.includes("flash") || m.name.includes("gemini-3"))
+      (m.name.includes("flash") || m.name.includes("gemini-3") || m.name.includes("pro"))
     );
 
     if (!availableModel) throw new Error("No se encontró un modelo compatible.");
     const modelName = availableModel.name;
 
-    // 2. PETICIÓN DE DIAGNÓSTICO
+    // 2. Petición con el formato de objetos para los pasos
     const diagUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
 
     const response = await fetch(diagUrl, {
@@ -27,30 +25,36 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `Eres experto en soporte técnico Samsung HVAC. 
+            text: `Eres experto en soporte técnico de Samsung HVAC (climatización). 
             Diagnostica el error "${code}" para el equipo "${deviceType}". 
             Información adicional: ${extraInfo}.
 
-            INSTRUCCIONES DE FORMATO:
-            Responde ÚNICAMENTE con un objeto JSON.
-            Es OBLIGATORIO que el campo "steps" contenga una lista de al menos 3 pasos detallados de reparación.
+            RESPONDE ÚNICAMENTE CON UN OBJETO JSON VÁLIDO.
+            Es CRÍTICO que el campo "steps" sea una lista de objetos con "instruction" y "detail".
 
-            Estructura requerida:
+            Estructura exacta requerida:
             {
               "code": "${code}",
-              "title": "Nombre del error",
-              "description": "Explicación técnica",
-              "possibleCauses": ["causa 1", "causa 2"],
-              "steps": ["Paso 1: Comprobar...", "Paso 2: Medir...", "Paso 3: Sustituir..."],
+              "title": "Nombre técnico del error",
+              "description": "Descripción detallada del fallo",
+              "possibleCauses": ["Causa 1", "Causa 2"],
+              "steps": [
+                {
+                  "instruction": "Título del paso 1 (Ej: Comprobación de tensión)",
+                  "detail": "Explicación detallada de cómo realizar la medida y qué valores esperar."
+                },
+                {
+                  "instruction": "Título del paso 2",
+                  "detail": "Instrucciones técnicas precisas."
+                }
+              ],
               "severity": "Alta"
             }`
           }]
         }],
-        // Configuración para forzar una respuesta más creativa y detallada
         generationConfig: {
           temperature: 0.7,
-          topP: 0.8,
-          topK: 40
+          topP: 0.95,
         }
       })
     });
@@ -58,13 +62,16 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || "Error al generar contenido");
 
-    // Limpieza de Markdown y parseo
-    const rawText = data.candidates[0].content.parts[0].text;
-    const cleanJson = rawText.replace(/```json|```/g, "").trim();
+    // Limpieza de Markdown
+    let text = data.candidates[0].content.parts[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     
-    return JSON.parse(cleanJson);
+    if (!jsonMatch) throw new Error("La IA no devolvió un formato JSON válido.");
+    
+    return JSON.parse(jsonMatch[0]);
 
   } catch (error: any) {
-    throw new Error("Error en el diagnóstico: " + error.message);
+    console.error("Error en aiService:", error);
+    throw new Error(error.message);
   }
 };
