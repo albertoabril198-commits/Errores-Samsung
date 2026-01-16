@@ -2,14 +2,17 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key no detectada.");
 
-  // URL UNIVERSAL (v1beta + gemini-1.5-flash)
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // URL ACTUALIZADA A GEMINI 3 (según tu captura de pantalla)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{
-        text: `Eres experto en Samsung HVAC. Diagnostica el error "${code}" en "${deviceType}". Info extra: ${extraInfo}. 
-        Responde exclusivamente con un JSON que tenga: code, title, description, possibleCauses (lista), steps (lista), severity.`
+        text: `Eres experto en soporte técnico de Samsung HVAC. 
+        Diagnostica el error "${code}" para el equipo "${deviceType}". 
+        Información adicional: ${extraInfo}.
+        Responde exclusivamente en formato JSON con esta estructura: 
+        {"code": "${code}", "title": "Nombre del Error", "description": "Explicación", "possibleCauses": ["causa 1"], "steps": ["paso 1"], "severity": "Media"}`
       }]
     }]
   };
@@ -22,18 +25,13 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
     });
 
     const data = await response.json();
-    
+
     if (!response.ok) {
-      throw new Error(`Google dice: ${data.error?.message || 'Error desconocido'}`);
+      throw new Error(`Google responde: ${data.error?.message || 'Error en el modelo Gemini 3'}`);
     }
 
-    // Limpiador avanzado de respuesta
-    let text = data.candidates[0].content.parts[0].text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/); // Busca el primer { y el último }
-    
-    if (!jsonMatch) throw new Error("La IA no devolvió un formato JSON válido.");
-    
-    return JSON.parse(jsonMatch[0]);
+    const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+    return JSON.parse(text);
   } catch (error: any) {
     throw new Error(error.message);
   }
