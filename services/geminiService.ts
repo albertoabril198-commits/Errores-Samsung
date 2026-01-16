@@ -1,15 +1,19 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const diagnoseError = async (code: string, deviceType: string, extraInfo: string) => {
-  // Intentamos obtener la clave de ambas formas posibles en Vite
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
+  // DEBUG: Esto te permitirá ver en la consola del navegador si la clave existe
+  // (No te preocupes, en producción nadie lo verá si no abre la consola)
+  console.log("¿API Key detectada?:", apiKey ? "SÍ" : "NO");
+
   if (!apiKey) {
-    throw new Error("API Key no detectada. Verifica que la variable en Vercel se llame VITE_GEMINI_API_KEY");
+    throw new Error("La aplicación no detecta la clave VITE_GEMINI_API_KEY. Verifica Vercel.");
   }
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
+    // Usamos el nombre del modelo más estable
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `Actúa como soporte técnico de Samsung HVAC. 
@@ -24,7 +28,7 @@ export const diagnoseError = async (code: string, deviceType: string, extraInfo:
     
     return JSON.parse(text);
   } catch (error: any) {
-    console.error("Error detallado:", error);
-    throw new Error("Error al conectar con la IA. Asegúrate de que la clave sea correcta y estés en una región permitida.");
+    console.error("Error detallado de Google:", error);
+    throw new Error(`Error de Google: ${error.message}`);
   }
 };
